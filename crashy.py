@@ -11,20 +11,42 @@ from pydantic import BaseModel
 client = OpenAI()
 st.title("Crashy App")
 
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List
+from enum import Enum
+
+class DamageSeverity(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+class DamageLocation(str, Enum):
+    front = "Front"
+    rear = "Rear"
+    sides = "Sides"
+    roof = "Roof"
+
+class VehicleDamage(BaseModel):
+    fire_present: bool = Field(..., description="Indicates if there are signs of fire on the vehicle.")
+    damage_severity: DamageSeverity = Field(..., description="Severity of the damage.")
+    damage_location: DamageLocation = Field(..., description="Location of the damage on the vehicle.")
+    license_plate_number: Optional[str] = Field(None, description="License plate number if fully visible.")
+    detailed_damage_description: str = Field(..., description="Detailed description of the visible damages.")
+
+    @validator('license_plate_number')
+    def validate_license_plate(cls, v, values):
+        if values.get('fire_present') and not v:
+            raise ValueError("License plate number must be provided if there are signs of fire.")
+        return v
+
+class VehicleReport(BaseModel):
+    vehicle_id: int = Field(..., description="Unique identifier for the vehicle.")
+    damage: VehicleDamage
 
 class AccidentReport(BaseModel):
-    """An accident report model."""
-
-    car_present: bool
-    damage_recognized: bool
-    damage_fully_visible: bool
-    damage_severity: str  # 'low', 'medium', 'high'
-    damage_location: str  # z.B. 'Front', 'Heck', 'Seiten', 'Dach'
-    fire_present: bool
-    license_plate_number: Optional[str]  # noqa: UP007
-    detailed_damage_description: str
-    number_of_valid_images: int
-    number_of_unique_vehicles: int
+    cars: List[VehicleReport] = Field(..., description="List of vehicles involved in the accident.")
+    number_of_valid_images: int = Field(..., description="Number of valid images used for assessment.")
+    number_of_unique_vehicles: int = Field(..., description="Number of unique vehicles visible in the images.")
 
 
 prompt = """
@@ -135,78 +157,62 @@ if uploaded_file is not None:
         img_content.append(content)
 
 
+    # After receiving the response
     response = client.beta.chat.completions.parse(
         model="gpt-4o",
         messages=[
             {
                 "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt,
-                    },
-                ],
+                "content": prompt,
             },
             {
                 "role": "user",
-                "content":
-                    img_content,
+                "content": img_content,
             },
         ],
         response_format=AccidentReport,
         temperature=0.1,
     )
 
-    st.write(response.choices[0].message.parsed)
-    final_resp = response.choices[0].message.parsed
-    if not final_resp:
-        st.write(
-            "Das Bild konnte leider nicht analysiert werden. "
-            "Bitte laden Sie ein Bild vom gesamten Fahrzeug hoch."
-        )
-    else:
-        if not final_resp.car_present:
-            st.write(
-                "Das Auto ist nicht sichtbar. "
-                "Bitte laden Sie ein Bild vom gesamten Fahrzeug hoch."
-            )
-            st.stop()
-        if not final_resp.damage_recognized:
-            st.write(
-                "Kein Schaden erkannt. "
-                "Bitte laden Sie ein Bild mit sichtbarem Schaden hoch."
-            )
-            st.stop()
-        if not final_resp.damage_fully_visible:
-            st.write(
-                "Schaden nicht vollständig sichtbar. "
-                "Bitte laden Sie ein Bild mit vollständig sichtbarem Schaden hoch."
-            )
-            st.stop()
-        if final_resp.fire_present:
-            st.warning("Brandgefahr!")
-            st.stop()
-        if final_resp.damage_severity == "high":
-            st.warning("Hoher Schaden!")
-            st.stop()
+    accident_report = response.choices[0].message.parsed
+    st.write(accident_report )
 
-        st.write("Schadensbericht:")
+    if not accident_report:
+        st.write("Das Bild konnte leider nicht analysiert werden. Bitte laden Sie ein Bild vom gesamten Fahrzeug hoch.")
+    else:
+        for car in accident_report.cars:
+            if not car.damage.fire_present and car.damage.damage_severity != "high":
+                st.write(f"Fahrzeug {car.vehicle_id} Schadenbericht:")
+                st.write(f"- Schweregrad des Schadens: {car.damage.damage_severity}")
+                st.write(f"- Schadensort am Fahrzeug: {car.damage.damage_location}")
+                st.write(f"- Kennzeichen: {car.damage.license_plate_number or 'None'}")
+                st.write(f"- Zusätzliche Details: {car.damage.detailed_damage_description}")
+            elif car.damage.fire_present:
+                st.warning(f"Fahrzeug {car.vehicle_id}: Brandgefahr!")
+            elif car.damage.damage_severity == "high":
+                st.warning(f"Fahrzeug {car.vehicle_id}: Hoher Schaden!")
+
+    # Additional form handling as needed
 
         @st.fragment
-        def fill_out_form() -> None:
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.text_input("Name", placeholder="Ihr Name")
-                st.text_input("Telefonnummer", placeholder="Ihre Telefonnummer")
-                st.text_input("E-Mail-Adresse", placeholder="Ihre E-Mail-Adresse")
-                st.text_area("Anschrift", placeholder="Ihre Anschrift")
-            with col2:
-                st.text_input("Schweregrad des Schadens", final_resp.damage_severity)
-                st.text_input("Schadensort am Fahrzeug", final_resp.damage_location)
-                st.text_input("Kennzeichen", final_resp.license_plate_number)
-                st.text_area("Zusätzliche Details", final_resp.detailed_damage_description)
+        def fill_out_form(accident_report: AccidentReport) -> None:
+            for car in accident_report.cars:
+                st.subheader(f"Fahrzeug {car.vehicle_id} Details")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.text_input("Name", placeholder="Ihr Name")
+                    st.text_input("Telefonnummer", placeholder="Ihre Telefonnummer")
+                    st.text_input("E-Mail-Adresse", placeholder="Ihre E-Mail-Adresse")
+                    st.text_area("Anschrift", placeholder="Ihre Anschrift")
+                with col2:
+                    st.text_input("Schweregrad des Schadens", car.damage.damage_severity)
+                    st.text_input("Schadensort am Fahrzeug", car.damage.damage_location)
+                    st.text_input("Kennzeichen", car.damage.license_plate_number or "None")
+                    st.text_area("Zusätzliche Details", car.damage.detailed_damage_description)
             st.write("Bitte überprüfen Sie die Angaben.")
             if st.button("Schaden melden"):
+                # Handle form submission
                 ...
-        fill_out_form()
+                
+        fill_out_form(accident_report)
+
