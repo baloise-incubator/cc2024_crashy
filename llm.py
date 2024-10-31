@@ -1,6 +1,7 @@
 """Module to manage LLM calls."""
 
-import io
+
+import base64
 
 from openai import OpenAI
 from openai.types.chat.parsed_chat_completion import ContentType
@@ -11,13 +12,34 @@ from prompt import prompt
 client = OpenAI()
 
 
-def call_transcription(audio_file: io.BytesIO) -> str:
+def call_transcription(audio_file: bytes) -> str:
     """Call the transcription API with the audio file."""
-    translation = client.audio.translations.create(
-        model="whisper-1",
-        file=audio_file,
+    encoded_string = base64.b64encode(audio_file).decode("utf-8")
+
+    completion = client.chat.completions.create(
+        model="gpt-4o-audio-preview",
+        modalities=["text"],
+        audio={"voice": "alloy", "format": "wav"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "What is in this recording?"
+                    },
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": encoded_string,
+                            "format": "wav"
+                        }
+                    }
+                ]
+            },
+        ]
     )
-    return translation.text
+    return completion.choices[0].message.content
 
 
 def call_llm(audio_transcript: str, base64_images: list[str]) -> ContentType | None:

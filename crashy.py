@@ -2,7 +2,7 @@
 
 import base64
 import datetime
-import io
+from pathlib import Path
 
 import streamlit as st
 from openai import OpenAI
@@ -30,10 +30,7 @@ def audio_input() -> str | None:
     """Capture audio input and return its transcription."""
     audio_value = st.experimental_audio_input("Was ist passiert?")
     if audio_value:
-        audio_bytes = audio_value.read()
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = "audio.wav"
-        return call_transcription(audio_file)
+        return call_transcription(audio_value.read())
 
     return None
 
@@ -42,21 +39,7 @@ transcription = audio_input()
 st.write(transcription)
 
 if transcription:
-    from pathlib import Path
-
-    from openai import OpenAI
-
-    client = OpenAI()
-
     speech_file_path = Path(__file__).parent / "audio" / "speech.mp3"
-    response = client.audio.speech.create(
-        model="tts-1",
-        voice="alloy",
-        input="Viele Dank für die Audioeingabe. Bitte laden Sie nun ein Bild vom Schaden hoch.",
-    )
-
-    response.stream_to_file(speech_file_path)
-
     with speech_file_path.open("rb") as f:
         st.audio(f, format="audio/mp3", autoplay=True)
 
