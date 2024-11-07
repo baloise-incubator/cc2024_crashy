@@ -61,7 +61,7 @@ print("Path to dataset files:", path)
 Typically they are cached under ~/.cache/kagglehub/
 
 ## Manipulate exif data
-Images may have embedded  [EXIF metadata](https://en.wikipedia.org/wiki/Exif). They data can be displayed:
+Images may have embedded  [EXIF metadata](https://en.wikipedia.org/wiki/Exif). The data can be displayed:
 
 ```bash
 exiftool <path_to_image>
