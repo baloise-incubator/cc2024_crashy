@@ -29,6 +29,7 @@ Codecamp 2024 - Sercan, Patrick
 ## Conclusions:
 - given JSON structure can reliably be extracted
 - gpt4o object detection yields acceptable results
+- english yields better damage descriptions
 - gpt4o visual model is affordable (<0.2 cents/pic)
 - speech to text works if audio quality is good
 - swiss german words are not recognized
